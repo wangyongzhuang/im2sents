@@ -1,0 +1,15 @@
+VOC_ALL > 5 & UNK
+lr, 1e-3,5e-5,50
+weight_decay, 0
+batch, 100
+xe_with_samp, 0.25,0.005
+feat_npy
+sent_len, 20
+encode relu
+
+
+######
+TBD
+up-down feat
+sent_len, 16
+batch, 8,16

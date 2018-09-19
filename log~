@@ -1,0 +1,71 @@
+encode: Wx <<< tanh(Wx)
+encode      (ckpt1 vs ckpt2):  relu vs tanh (lr=5e-4,batch=100,weight_decay=1e-5)
+            (epo35: 0.663 vs 0.661, epo40: 0.668 vs 0.668)
+            but in att part, embed_feat need add hidden_state_0, which in [-1,1], so tanh is better
+
+weight_decay(ckpt1 vs ckpt4):  1e-5 vs 0 
+            (ckpt3 vs 4,epo3:  0.441 vs 0.461, loss:1900 vs 1500, 1e-5=~400loss,
+                        epo15: 0.612 vs 0.636, loss:1650 vs 1180, 1e-5=~400loss,
+ maybe 1e-6 or 1e-8, ~40,4loss)
+
+
+######################################
+ckpt:
+lr=1e-3,5e-5
+voc:tain+val=10157
+embed=1000
+relu=True
+
+epoch=100,cider=0.822
+epoch=200,cider=0.862,ciderk=0.996
+saved in relu_embed_1000
+
+change:batch_size=10
+lr=5e-5
+
+
+ckpt1:
+lr=1e-3,5e-5
+voc:tain+val=10157
+embed=512
+relu=False
+
+epoch=100,cider=0.621
+
+ckpt2:
+lr=1e-3,5e-5
+voc:tain+val=10157
+embed=512
+relu=False,Tanh
+
+epoch=100,cider=0.750
+
+
+read .mat file in train2014, ~203s
+read .npy file in train2014, ~112s
+
+####################################
+sent_len:  20   vs 16  
+lr_SCST is 5e-4**(epo/3), when epo=30,lr~=5e-5
+lr:           1e-3,5e-5,50 vs 1e-3,1e-4,100 vs 5e-4
+
+model:        mie vs att2in
+unk:          yes vs no
+feat:         resnet vs updown
+batch:        100 vs 8-16
+voc_size:     9953 vs 10128
+scst_max:     0.15 vs 0.25
+e2e:          E2E vs gt
+
+########################################
+torch result for test 50400
+{'reflen': 377781, 'guess': [377433, 336933, 296433, 255933], 'testlen': 377433, 'correct': [291714, 165406, 85271, 43593]}
+ratio: 0.999078831386
+Bleu_1: 0.772
+Bleu_2: 0.615
+Bleu_3: 0.477
+Bleu_4: 0.369
+METEOR: 0.278
+ROUGE_L: 0.571
+CIDEr: 1.137
+{'CIDEr': '1.1366058666210561', 'Bleu_4': 0.3689114802527363, 'Bleu_3': 0.477455476961866, 'Bleu_2': 0.6154065716251326, 'Bleu_1': 0.772177203407954, 'ROUGE_L': '0.5708811588687885', 'METEOR': 0.27763876330020454}
