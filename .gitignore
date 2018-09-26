@@ -1,0 +1,10 @@
+*.pyc
+*.py~
+.vscode
+pre
+data
+result
+ckpt
+test
+*.log
+.gitignore

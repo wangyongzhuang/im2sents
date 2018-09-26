@@ -1,0 +1,6 @@
+*.pyc
+*.py~
+pre
+data
+result
+ckpt
