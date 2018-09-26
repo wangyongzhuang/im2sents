@@ -116,12 +116,7 @@ def get_each_score(cfg, cocoEval, res, refs, label2word, score_type='CIDEr', ref
 
 
 def get_rl_source(cfg, sess, model, label2word, anneal_rate, cocoEval, wvst_mask, score_type='CIDEr'):
-#def get_score_mask(model, label2word, cfg, sess, feat_tmp, label_tmp, refs, ref_words, fr, score_type='CIDEr'):
     feat, refs, common_words, res_max, res_scst, samp_mask = sess.run([model.feat_ktrain, model.refs_ktrain, model.ref_words_ktrain, model.res_max_ktrain, model.sequence_xe, model.samp_mask_xe], feed_dict={model.anneal_rate:[anneal_rate]})
-
-    #self.sequence_rl  = tf.placeholder(tf.int32, shape=[self.cfg.batch_size, self.cfg.sentence_length+1])
-    #self.samp_mask_rl = tf.placeholder(tf.int32, shape=[self.cfg.batch_size, self.cfg.sentence_length+1])
-    #self.feat_rl      = tf.placeholder(tf.float32, shape=[self.cfg.batch_size, self.feat_num, self.feat_dim])
 
     # scores_mask,
     score_scst, scores_scst, common_words_mask = get_each_score(cfg, cocoEval, res_scst, refs, label2word, score_type=score_type, ref_words=common_words)
@@ -130,102 +125,93 @@ def get_rl_source(cfg, sess, model, label2word, anneal_rate, cocoEval, wvst_mask
 
     scores_scst = np.tile(np.array(scores_scst), (cfg.sentence_length,1))
     scores_max  = np.tile(np.array(scores_max), (cfg.sentence_length,1))
-    ## scst ##
-    #reward_mask =  np.abs(common_words_mask) * (scores_scst - scores_max)
-    #mask = reward_mask
 
+    # reward base
+    scores_base = scores_scst - scores_max
+    
+    #scores_base_group = scores_base.reshape([cfg.sentence_length, 5, cfg.batch_size])
+    #scores_base_group_norm = scores_base_group - np.mean(scores_base_group, axis=1, keepdims=True)
+    #scores_base = scores_base_group_norm.reshape([cfg.sentence_length, 5 * cfg.batch_size])
 
-    # task 1
-    #reward_mask =  ((1 - samp_mask[1:,:]) * (common_words_mask > 0)  + samp_mask[1:,:] * (common_words_mask > 0) * (1) + 1.0 * (common_words_mask < 0) * (scores_max / scores_up)) * (scores_scst - scores_max) * np.abs(common_words_mask)
+    #scores_up = np.maximum(scores_max, scores_scst)
 
-
-
-    #  taks 2##
-    scores_up = np.maximum(scores_max, scores_scst)
-    #reward_mask =  ((1 - samp_mask[1:,:]) * (common_words_mask > 0)  + samp_mask[1:,:] * (common_words_mask > 0) * (1 + scores_max / scores_up) + (common_words_mask < 0) * (scores_max / scores_up)) * (scores_scst - scores_max)
-    #max2up = (scores_max / scores_up)
     max2up = (scores_max / scores_scst)
     max2up[np.isnan(max2up)] = 1
-    max2up = np.minimum(max2up, 2)
-    max2up = np.maximum(max2up, 0.5)
+    max2up = np.minimum(max2up, 10)
+    max2up = np.maximum(max2up, 0.1)
+    #pdb.set_trace()
 
     samp_mask = samp_mask[:,1:].T
+
     
     if cfg.rl_ver==0:
-        reward_mask_ratio =  ((1 - samp_mask) * (1) + \
+        reward_mask_ratio =  ((1 - samp_mask) * np.abs(common_words_mask) * (1) + \
                               (samp_mask * common_words_mask > 0) * (1) + \
                               (samp_mask * common_words_mask < 0) * (1))
 
                           
-        reward_mask = reward_mask_ratio * (scores_scst - scores_max) * np.abs(common_words_mask)
+        reward_mask = reward_mask_ratio * scores_base
         value_mask  = reward_mask#np.dot(wvst_mask, reward_mask)
 
     elif cfg.rl_ver==1:
-        reward_mask_ratio =  ((1 - samp_mask) * (1) + \
+        reward_mask_ratio =  ((1 - samp_mask) * np.abs(common_words_mask) * (1) + \
                               (samp_mask * common_words_mask > 0) * np.maximum(1, max2up) + \
                               (samp_mask * common_words_mask < 0) * (max2up))
 
                           
-        reward_mask = reward_mask_ratio * (scores_scst - scores_max) * np.abs(common_words_mask)
+        reward_mask = reward_mask_ratio * scores_base
         value_mask  = np.dot(wvst_mask, reward_mask)
 
     elif cfg.rl_ver==2:
-        reward_mask_ratio =  ((1 - samp_mask) * (1) + \
+        reward_mask_ratio =  ((1 - samp_mask) * np.abs(common_words_mask) * (1) + \
                               (samp_mask * common_words_mask > 0) * (1+max2up) + \
                               (samp_mask * common_words_mask < 0) * (max2up))
 
                           
-        reward_mask = reward_mask_ratio * (scores_scst - scores_max) * np.abs(common_words_mask)
+        reward_mask = reward_mask_ratio * scores_base
         value_mask  = np.dot(wvst_mask, reward_mask)
 
     elif cfg.rl_ver==3:
-        reward_mask_ratio =  ((1 - samp_mask) * (1) + \
+        reward_mask_ratio =  ((1 - samp_mask) * np.abs(common_words_mask) * (1) + \
+                              (samp_mask * common_words_mask > 0) * (1) + \
+                              (samp_mask * common_words_mask < 0) * (1+max2up))
+
+                          
+        reward_mask = reward_mask_ratio * scores_base
+        value_mask  = np.dot(wvst_mask, reward_mask)
+
+    elif cfg.rl_ver==4:
+        reward_mask_ratio =  ((1 - samp_mask) * np.abs(common_words_mask) * (1) + \
+                              (samp_mask * common_words_mask > 0) * (1+max2up) + \
+                              (samp_mask * common_words_mask < 0) * (1))
+
+                          
+        reward_mask = reward_mask_ratio * scores_base
+        value_mask  = np.dot(wvst_mask, reward_mask)
+
+    elif cfg.rl_ver==5:
+        reward_mask_ratio =  ((1 - samp_mask) * np.abs(common_words_mask) * (1) + \
                               (samp_mask * common_words_mask > 0) * (1) + \
                               (samp_mask * common_words_mask < 0) * (max2up))
 
                           
-        reward_mask = reward_mask_ratio * (scores_scst - scores_max) * np.abs(common_words_mask)
+        reward_mask = reward_mask_ratio * scores_base
         value_mask  = np.dot(wvst_mask, reward_mask)
 
-    elif cfg.rl_ver==4:
-        reward_mask_ratio =  ((1 - samp_mask) * (1) + \
+    elif cfg.rl_ver==6:
+        reward_mask_ratio =  ((1 - samp_mask) * np.abs(common_words_mask) * (1) + \
                               (samp_mask * common_words_mask > 0) * (max2up) + \
                               (samp_mask * common_words_mask < 0) * (1))
 
                           
-        reward_mask = reward_mask_ratio * (scores_scst - scores_max) * np.abs(common_words_mask)
+        reward_mask = reward_mask_ratio * scores_base
         value_mask  = np.dot(wvst_mask, reward_mask)
-    
+    #pdb.set_trace()
+
     '''
     rl_ver = cfg.rl_ver
     '''
     return feat, res_scst, value_mask, score_scst, score_max#, scores_scst[0,:].tolist(), scores_max[0,:].tolist(), score_scst, score_max
-    #0.0#reward_mask = ((1 - samp_mask[1:,:]) * (1) + (samp_mask[1:,:] * common_words_mask > 0) * (1+max2up) + (samp_mask[1:,:] * common_words_mask < 0) * (2-max2up)) * (scores_scst - scores_max) * np.abs(common_words_mask)
-    
-    #2.1NOT#reward_mask =  ((1 - samp_mask[1:,:]) * (1) + (samp_mask[1:,:] * common_words_mask > 0) * (1 + max2up) + (samp_mask[1:,:] * common_words_mask < 0) * (1)) * (scores_scst - scores_max) * np.abs(common_words_mask)
-
-    #2.2NOT#reward_mask =  ((1 - samp_mask[1:,:]) * (1) + (samp_mask[1:,:] * common_words_mask > 0) * (max2up) + (samp_mask[1:,:] * common_words_mask < 0) * (2-max2up)) * (scores_scst - scores_max) * np.abs(common_words_mask)
-
-    #2.3NOT#reward_mask =  ((1 - samp_mask[1:,:]) * (1) + (samp_mask[1:,:] * common_words_mask > 0) * (2-max2up) + (samp_mask[1:,:] * common_words_mask < 0) * (max2up)) * (scores_scst - scores_max) * np.abs(common_words_mask)
-
-    #2.4 TMP#
-    #reward_mask =  ((1 - samp_mask[1:,:]) * (1) + (samp_mask[1:,:] * common_words_mask > 0) * (max2up) + (samp_mask[1:,:] * common_words_mask < 0) * (1+max2up)) * (scores_scst - scores_max) * np.abs(common_words_mask)
-
-    #2.5 TRY#reward_mask = ((1 - samp_mask[1:,:]) * (1) + (samp_mask[1:,:] * common_words_mask > 0) * (1) + (samp_mask[1:,:] * common_words_mask < 0) * (1)) * (scores_scst - scores_max) * np.abs(common_words_mask)
-
-    # task 3
-    #3.1DOING#
-    #TRY#reward_mask =  ((1 - samp_mask[1:,:]) * (1) + (samp_mask[1:,:] * common_words_mask > 0) * (1) + 1.5 * (samp_mask[1:,:] * common_words_mask < 0) * (1 + max2up)) * (scores_scst - scores_max) * np.abs(common_words_mask)
-
-
-    #reward_mask =  ((1 - samp_mask[1:,:]) * (1) + (samp_mask[1:,:] * common_words_mask > 0) * (1) + (samp_mask[1:,:] * common_words_mask < 0) * (1+max2up)) * (scores_scst - scores_max) * np.abs(common_words_mask)
-
-
-    #3.2#reward_mask =  ((1 - samp_mask[1:,:]) * (1) + (samp_mask[1:,:] * common_words_mask > 0) * (1) + (samp_mask[1:,:] * common_words_mask < 0) * (max2up)) * (scores_scst - scores_max) * np.abs(common_words_mask)
-
-
-    #return res_scst, value_mask, scores_scst[0,:].tolist(), scores_max[0,:].tolist(), score_scst, score_max
-
 
 # kval, ktest, val
 def test(cfg, sess, model, data, cocoEval, split='val'):# split in ['kval', 'ktest', 'val']
@@ -239,7 +225,7 @@ def test(cfg, sess, model, data, cocoEval, split='val'):# split in ['kval', 'kte
     elif split=='val':
         num = data.val_size
 
-    for itr in range(num / cfg.batch_size):
+    for itr in range(num / (5 * cfg.batch_size)):
         if split=='kval':
             name, ress, refs = sess.run([model.file_name_kval, model.res_max_kval, model.refs_kval])
         elif split=='ktest':
@@ -275,7 +261,7 @@ def test_web(model, data, cfg, sess):
     names = []
     cocoids = []
     num = data.web_size
-    for itr in range(num / cfg.batch_size):
+    for itr in range(num / (5 * cfg.batch_size)):
         name, cocoid, ress = sess.run([model.name_test, model.cocoid_test, model.res_max_test])
         names.append(name[:,0])
         cocoids.append(cocoid[:,0])

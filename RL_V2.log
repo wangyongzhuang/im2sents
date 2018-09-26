@@ -1,9 +1,9 @@
-epo 37
-CIDEr: 1.096
+epo 3
+CIDEr: 1.090
 Bleu_4: 0.328
-Bleu_3: 0.441
-Bleu_2: 0.586
-Bleu_1: 0.749
-ROUGE_L: 0.551
-METEOR: 0.269
+Bleu_3: 0.442
+Bleu_2: 0.587
+Bleu_1: 0.751
+ROUGE_L: 0.552
+METEOR: 0.268
 

@@ -19,13 +19,11 @@ def main(cfg, model, dataset):
     # config
     os.environ['CUDA_VISIBLE_DEVICES'] = cfg.gpu_id
 
-    #tf_config = tf.ConfigProto(device_count={"CPU":3},
-    #                           inter_op_parallemism_threads=1,
-    #                           intra_op_parallemism_threads=3,
-    #                           lg_device_placement=True)
+    #tf_config = tf.ConfigProto(device_count={"CPU":2},
+    #                           inter_op_parallelism_threads=1,
+    #                           intra_op_parallelism_threads=2,
+    #                           log_device_placement=True)
     tf_config = tf.ConfigProto()
-    #tf_config.DEVICE_FILTERS_FIELD_NUMBER = 3
-    #tf_config.INTRA_OP_PARALLELISM_THREADS_FIELD_NUMBER = 3
     tf_config.gpu_options.allow_growth = True
     #tf_config.gpu_options.per_process_gpu_memory_fraction = 0.4
 
@@ -40,7 +38,11 @@ def main(cfg, model, dataset):
 
     # optimizer
     optimizer_xe = tf.train.AdamOptimizer(learning_rate_xe, beta1=0.8, beta2=0.999, epsilon=1e-8).minimize(model.loss_xe, global_step=step_xe)
-    optimizer_rl = tf.train.AdamOptimizer(learning_rate_rl, beta1=0.8, beta2=0.999, epsilon=1e-8).minimize(model.loss_rl, global_step=step_rl)
+    #optimizer_rl = tf.train.AdamOptimizer(learning_rate_rl, beta1=0.8, beta2=0.999, epsilon=1e-8).minimize(model.loss_rl, global_step=step_rl)
+    opt = tf.train.AdamOptimizer(learning_rate_rl, beta1=0.8, beta2=0.999, epsilon=1e-8)
+    grads_and_vars = opt.compute_gradients(model.loss_rl)
+    clipped_grads_and_vars = [(tf.clip_by_value(gv[0], -1, 1), gv[1]) for gv in grads_and_vars]
+    optimizer_rl = opt.apply_gradients(clipped_grads_and_vars)
 
     # sess
     sess = tf.Session(config=tf_config)
@@ -117,6 +119,7 @@ def main(cfg, model, dataset):
     score_ktest, scores_ktest, names_ktest, ges_ktest, gts_ktest = test(cfg, sess, model, dataset, cocoEval, split='ktest')
     score_best = copy.deepcopy(score_ktest)
     score_best['epoch'] = 0
+    t0 = time.time()
     while True:
         itr += 1
         anneal_rate = cfg.sample_rate_max
@@ -138,7 +141,8 @@ def main(cfg, model, dataset):
 
         # show the result
         if itr % 100 == 0 or itr==1:
-            print cfg.train_info+'_'+'RL_v{}_Epo_{:0.2f}_Itr_{:d} l_rl:{:0.1f} s_scst:{:0.3f} s_max:{:0.3f} lr:{:d}e-5 anneal:{:0.2f}'.format(cfg.rl_ver, epoch, itr, cfg.loss_scale * lm, s_scst_pre, s_max_pre, int(lrrl*1e5), anneal_rate)
+            print cfg.train_info+'_'+'RL_v{}_Epo_{:0.2f}_Itr_{:d} l_rl:{:0.1f} s_scst:{:0.3f} s_max:{:0.3f} lr:{:d}e-5 anneal:{:0.2f} time:{:0.2f}'.format(cfg.rl_ver, epoch, itr, cfg.loss_scale * lm, s_scst_pre, s_max_pre, int(lrrl*1e5), anneal_rate, time.time()-t0)
+            t0 = time.time()
 
         if itr % int(cfg.epoch_val * cfg.data_size / cfg.batch_size) == 0:
             # kval

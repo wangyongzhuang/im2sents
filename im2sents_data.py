@@ -35,7 +35,7 @@ class dataset():
         self.test_size       = len(self.test_file_names)
 
         # cfg
-        self.data_size  = 5 * self.ktrain_size
+        self.data_size  = self.ktrain_size
         self.label_size = len(self.label2word)
 
         self.load_split()
@@ -69,9 +69,12 @@ class dataset():
             refs_raw  = np.array([_['sent_raw'] for _ in data['sents'].values()])
             ref_words = np.array(data['common_words'])
 
+            labels = []
             for sent_id in data['sents'].keys():
                 label = [0] + data['sents'][sent_id]['label'][:self.cfg.sentence_length]
-                yield [file_name], feat, label, refs, refs_raw, ref_words
+                #yield [file_name], feat, label, refs, refs_raw, ref_words
+                labels.append(label)
+            yield [file_name], feat, labels, refs, refs_raw, ref_words
 
 
     def gen_kval(self):
@@ -126,7 +129,7 @@ class dataset():
                         output_types=(tf.string, tf.float32, tf.int64, tf.string, tf.string, tf.string),
                         output_shapes=(tf.TensorShape([1]),
                             tf.TensorShape([self.cfg.feat_num, self.cfg.feat_dim]),
-                            tf.TensorShape([self.cfg.sentence_length + 1]),
+                            tf.TensorShape([5, self.cfg.sentence_length + 1]),
                             tf.TensorShape([5]),
                             tf.TensorShape([5]),
                             tf.TensorShape([2 * self.cfg.sentence_length])))
@@ -140,7 +143,7 @@ class dataset():
                             tf.TensorShape([self.cfg.feat_num, self.cfg.feat_dim]),
                             tf.TensorShape([5]),
                             tf.TensorShape([5])))
-        self.data_kval = data_kval.repeat().batch(self.cfg.batch_size)
+        self.data_kval = data_kval.repeat().batch(5 * self.cfg.batch_size)
         self.iter_kval = self.data_kval.make_one_shot_iterator()
 
         # ktest
@@ -150,7 +153,7 @@ class dataset():
                             tf.TensorShape([self.cfg.feat_num, self.cfg.feat_dim]),
                             tf.TensorShape([5]),
                             tf.TensorShape([5])))
-        self.data_ktest = data_ktest.repeat().batch(self.cfg.batch_size)
+        self.data_ktest = data_ktest.repeat().batch(5 * self.cfg.batch_size)
         self.iter_ktest = self.data_ktest.make_one_shot_iterator()
 
         # val
@@ -160,7 +163,7 @@ class dataset():
                             tf.TensorShape([self.cfg.feat_num, self.cfg.feat_dim]),
                             tf.TensorShape([5]),
                             tf.TensorShape([5])))
-        self.data_val = data_val.repeat().batch(self.cfg.batch_size)
+        self.data_val = data_val.repeat().batch(5 * self.cfg.batch_size)
         self.iter_val = self.data_val.make_one_shot_iterator()
 
         # val_single

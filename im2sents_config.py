@@ -25,7 +25,7 @@ def cfg():
     parser.add_argument('--train_approach', default='XE', type=str)#'XE', 'SCST', 'WVST', 'WVSTB', 'WVSTBS'
     parser.add_argument('--is_fintune', default=False, type=bool)
 
-    parser.add_argument('--batch_size', default=100, type=int)
+    parser.add_argument('--batch_size', default=20, type=int)
     parser.add_argument('--loss_scale', default=1000,type=int)
 
 

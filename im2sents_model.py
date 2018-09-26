@@ -116,11 +116,18 @@ class model():
         self.weight_decay_xe = tf.constant(self.cfg.weight_decay_xe)
         self.weight_decay_rl = tf.constant(self.cfg.weight_decay_rl)
 
-        self.reward       = tf.placeholder(dtype=tf.float32, shape=[self.cfg.sentence_length, self.cfg.batch_size])
+        self.reward       = tf.placeholder(dtype=tf.float32, shape=[self.cfg.sentence_length, 5 * self.cfg.batch_size])
         self.mask_reward  = tf.tile(tf.expand_dims(self.reward, -1), [1, 1, self.cfg.label_size])
 
         # ktrain
-        self.file_name_ktrain, self.feat_ktrain, self.label_ktrain, self.refs_ktrain, self.refs_raw_ktrain, self.ref_words_ktrain = data.samp_ktrain_file_name, data.samp_ktrain_feat, data.samp_ktrain_label, data.samp_ktrain_refs, data.samp_ktrain_refs_raw, data.samp_ktrain_ref_words
+        #self.file_name_ktrain, self.feat_ktrain, self.label_ktrain, self.refs_ktrain, self.refs_raw_ktrain, self.ref_words_ktrain = data.samp_ktrain_file_name, data.samp_ktrain_feat, data.samp_ktrain_label, data.samp_ktrain_refs, data.samp_ktrain_refs_raw, data.samp_ktrain_ref_words
+        file_name_ktrain, feat_ktrain, label_ktrain, refs_ktrain, refs_raw_ktrain, ref_words_ktrain = data.samp_ktrain_file_name, data.samp_ktrain_feat, data.samp_ktrain_label, data.samp_ktrain_refs, data.samp_ktrain_refs_raw, data.samp_ktrain_ref_words
+        self.file_name_ktrain = tf.reshape(tf.tile(tf.expand_dims(file_name_ktrain, 1), [1, 5, 1]), [5 * self.cfg.batch_size, 1])
+        self.feat_ktrain      = tf.reshape(tf.tile(tf.expand_dims(feat_ktrain, 1), [1, 5, 1, 1]), [5 * self.cfg.batch_size, self.cfg.feat_num, self.cfg.feat_dim])
+        self.label_ktrain     = tf.reshape(label_ktrain, [5 * self.cfg.batch_size, self.cfg.sentence_length+1])
+        self.refs_ktrain      = tf.reshape(tf.tile(tf.expand_dims(refs_ktrain, 1), [1, 5, 1]), [5 * self.cfg.batch_size, 5])
+        self.refs_raw_ktrain  = tf.reshape(tf.tile(tf.expand_dims(refs_raw_ktrain, 1), [1, 5, 1]), [5 * self.cfg.batch_size, 5])
+        self.ref_words_ktrain = tf.reshape(tf.tile(tf.expand_dims(ref_words_ktrain, 1), [1, 5, 1]), [5 * self.cfg.batch_size, 2 * self.cfg.sentence_length])
 
         # kval
         self.file_name_kval, self.feat_kval, self.refs_kval, self.refs_raw_kval     = data.samp_kval_file_name, data.samp_kval_feat, data.samp_kval_refs, data.samp_kval_refs_raw
@@ -188,19 +195,19 @@ class model():
     def train_xe(self):
         #  loop
         output = []
-        cell_state_0  = self.lstm_cell_0.zero_state(self.cfg.batch_size, tf.float32)
-        cell_state_1  = self.lstm_cell_1.zero_state(self.cfg.batch_size, tf.float32)
+        cell_state_0  = self.lstm_cell_0.zero_state(5 * self.cfg.batch_size, tf.float32)
+        cell_state_1  = self.lstm_cell_1.zero_state(5 * self.cfg.batch_size, tf.float32)
         
         sequence = [self.label_ktrain[:,0]]
-        samp_mask = [tf.zeros(self.cfg.batch_size)]
+        samp_mask = [tf.zeros(5 * self.cfg.batch_size)]
         for t in range(self.cfg.sentence_length):
             # annealing
             embed_word_tmp = tf.nn.embedding_lookup(self.word_embedding, sequence[-1])
             # forward
-            logits, cell_state_0, cell_state_1 = self.forward(cell_state_0, cell_state_1, self.embed_feat_ktrain, embed_word_tmp, batch_size=self.cfg.batch_size)
+            logits, cell_state_0, cell_state_1 = self.forward(cell_state_0, cell_state_1, self.embed_feat_ktrain, embed_word_tmp, batch_size=5 * self.cfg.batch_size)
             output.append(logits)
 
-            input_idxs, samp_mask_tmp = softmax_monte_carlo_sample(logits=logits, shape=[self.cfg.batch_size, self.cfg.label_size], ground=self.label_ktrain[:, t+1], sample_rate=self.anneal_rate[0], select_max=self.cfg.select_max)
+            input_idxs, samp_mask_tmp = softmax_monte_carlo_sample(logits=logits, shape=[5 * self.cfg.batch_size, self.cfg.label_size], ground=self.label_ktrain[:, t+1], sample_rate=self.anneal_rate[0], select_max=self.cfg.select_max)
             sequence.append(input_idxs)
             samp_mask.append(samp_mask_tmp)
         self.sequence_xe  = tf.transpose(tf.stack(sequence), perm=[1,0])
@@ -216,37 +223,29 @@ class model():
 
         self.loss_xe = tf.reduce_mean(-1.0 * self.label_xe_masked * tf.log(tf.nn.softmax(self.logits_xe)+1e-8)) * self.cfg.label_size + self.weight_decay_xe * self.l2_loss
 
-        # optimizer
-        #self.train_xe_opt = 
 
 
     def train_rl(self):
         # input
-        self.sequence_rl  = tf.placeholder(tf.int32, shape=[self.cfg.batch_size, self.cfg.sentence_length+1])
-        self.feat_rl      = tf.placeholder(tf.float32, shape=[self.cfg.batch_size, self.cfg.feat_num, self.cfg.feat_dim])
+        self.sequence_rl  = tf.placeholder(tf.int32, shape=[5 * self.cfg.batch_size, self.cfg.sentence_length+1])
+        self.feat_rl      = tf.placeholder(tf.float32, shape=[5 * self.cfg.batch_size, self.cfg.feat_num, self.cfg.feat_dim])
 
         # loop
         embed_feat_rl     = self.feat_embedding(self.feat_rl)
         output = []
-        cell_state_0  = self.lstm_cell_0.zero_state(self.cfg.batch_size, tf.float32)
-        cell_state_1  = self.lstm_cell_1.zero_state(self.cfg.batch_size, tf.float32)
+        cell_state_0  = self.lstm_cell_0.zero_state(5 * self.cfg.batch_size, tf.float32)
+        cell_state_1  = self.lstm_cell_1.zero_state(5 * self.cfg.batch_size, tf.float32)
         for t in range(self.cfg.sentence_length):
             embed_word_tmp = tf.nn.embedding_lookup(self.word_embedding, self.sequence_rl[:,t])
-            logits, cell_state_0, cell_state_1 = self.forward(cell_state_0, cell_state_1, embed_feat_rl, embed_word_tmp, batch_size=self.cfg.batch_size, ftype='train')
+            logits, cell_state_0, cell_state_1 = self.forward(cell_state_0, cell_state_1, embed_feat_rl, embed_word_tmp, batch_size=5 * self.cfg.batch_size, ftype='train')
             output.append(logits)
 
         # logits and labels
         self.logits_rl = tf.stack(output)
         self.label_rl  = tf.one_hot(self.sequence_rl[:,1:], self.cfg.label_size)
-        self.label_rl_masked = tf.transpose(self.label_rl, perm=[1,0,2]) * self.sent_length_mask
+        self.label_rl_masked = tf.transpose(self.label_rl, perm=[1,0,2])# * self.sent_length_mask
 
         self.loss_rl = tf.reduce_mean(-1.0 * self.mask_reward * self.label_rl_masked * tf.log(tf.nn.softmax(self.logits_rl)+1e-8)) * self.cfg.label_size + self.weight_decay_rl * self.l2_loss
-
-        # optimizer
-        #self.train_rl_opt =
-        
-
-
 
 
 #############################################################################################
@@ -254,12 +253,12 @@ class model():
         # load input
 
         # LSTM
-        cell_state_0  = self.lstm_cell_0.zero_state(self.cfg.batch_size, tf.float32)
-        cell_state_1  = self.lstm_cell_1.zero_state(self.cfg.batch_size, tf.float32)
+        cell_state_0  = self.lstm_cell_0.zero_state(5 * self.cfg.batch_size, tf.float32)
+        cell_state_1  = self.lstm_cell_1.zero_state(5 * self.cfg.batch_size, tf.float32)
 
         # result
         res = []
-        res.append(tf.constant(np.zeros(self.cfg.batch_size), dtype=tf.int64))
+        res.append(tf.constant(np.zeros(5 * self.cfg.batch_size), dtype=tf.int64))
 
         # predict
         for t in range(self.cfg.sentence_length):
@@ -267,13 +266,13 @@ class model():
             embed_word = tf.nn.embedding_lookup(self.word_embedding, tf.cast(res[-1], tf.int64))
 
             # lstm
-            logits, cell_state_0, cell_state_1 = self.forward(cell_state_0, cell_state_1, embed_feat, embed_word, batch_size=self.cfg.batch_size, ftype='predict')
+            logits, cell_state_0, cell_state_1 = self.forward(cell_state_0, cell_state_1, embed_feat, embed_word, batch_size=5 * self.cfg.batch_size, ftype='predict')
 
             # res
             if predict_type=='MAX' or (predict_type=='SCST' and idxs is None):
                 res.append(tf.argmax(logits, -1))
             elif predict_type=='SCST' and idxs is not None:
-                res.append(softmax_monte_carlo_sample(logits=logits, shape=[self.cfg.batch_size, self.cfg.label_size], ground=idxs[:, t+1],  sample_rate=self.anneal_rate[0])[0])
+                res.append(softmax_monte_carlo_sample(logits=logits, shape=[5 * self.cfg.batch_size, self.cfg.label_size], ground=idxs[:, t+1],  sample_rate=self.anneal_rate[0])[0])
 
         return tf.concat([tf.expand_dims(_, -1) for _ in res], -1)
 
